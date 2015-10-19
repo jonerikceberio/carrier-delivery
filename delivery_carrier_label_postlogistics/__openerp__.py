@@ -19,7 +19,7 @@
 #
 ##############################################################################
 {'name': 'PostLogistics Labels WebService',
- 'version': '1.1',
+ 'version': '8.0.1.1.0',
  'author': "Camptocamp,Odoo Community Association (OCA)",
  'maintainer': 'Camptocamp',
  'license': 'AGPL-3',
@@ -36,7 +36,6 @@
  'tests': [],
  'installable': True,
  'auto_install': False,
- 'license': 'AGPL-3',
  'application': True,
  'external_dependencies': {
      'python': ['suds'],
