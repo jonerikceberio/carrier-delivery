@@ -72,48 +72,18 @@ class stock_picking(models.Model):
         self.generate_carrier_files(auto=True)
         return result
 
-    @api.multi
-    @api.depends("move_type", "move_lines.state", "move_lines.picking_id",
-                 "move_lines.partially_available")
-    def _state_get(self):
-        # We redefine the state function, because order can get to state done
-        # when all its move lines are in either cancel or done states.  Due to
-        # this, the order circumvents normal workflow and the carrier file is
-        # not generated
-        res = super(stock_picking, self)._state_get(None, None)
-        pickings = self.browse(res.keys())
-        done_pickings = self.browse([id for id, key in res.iteritems() if
-                                     key == "done"])
-        if done_pickings:
-            done_pickings.generate_carrier_files()
-        for picking in pickings:
-            picking.state = res[picking.id]
-
     carrier_file_generated = fields.Boolean(
         'Carrier File Generated', readonly=True, copy=False,
         help="The file for the delivery carrier has been generated.")
-    state = fields.Selection(
-        [('draft', 'Draft'),
-         ('cancel', 'Cancelled'),
-         ('waiting', 'Waiting Another Operation'),
-         ('confirmed', 'Waiting Availability'),
-         ('partially_available', 'Partially Available'),
-         ('assigned', 'Ready to Transfer'),
-         ('done', 'Transferred')],
-        string="State", readonly=True, select=True,
-        compute="_state_get", copy=False, store=True,
-        help=(
-            "* Draft: not confirmed yet and will not be scheduled until "
-            "confirmed\n"
-            "* Waiting Another Operation: waiting for another move to proceed "
-            "before it becomes automatically available "
-            "(e.g. in Make-To-Order flows)\n"
-            "* Waiting Availability: still waiting for the availability of "
-            "products\n"
-            "* Partially Available: some products are available and reserved\n"
-            "* Ready to Transfer: products reserved, simply waiting for "
-            "confirmation.\n"
-            "* Transferred: has been processed, can't be modified or "
-            "cancelled anymore\n"
-            "* Cancelled: has been cancelled, can't be confirmed anymore"
-        ))
+
+
+class stock_move(models.Model):
+    _inherit = 'stock.move'
+
+    @api.multi
+    def write(self, values):
+        write_result = super(stock_move, self).write(values)
+        if values.get('state') and values['state'] == 'done':
+            if self.picking_id.state == 'done':
+                self.picking_id.generate_carrier_files()
+        return write_result
