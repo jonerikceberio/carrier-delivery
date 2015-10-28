@@ -84,6 +84,11 @@ class stock_move(models.Model):
     def write(self, values):
         write_result = super(stock_move, self).write(values)
         if values.get('state') and values['state'] == 'done':
-            if self.picking_id.state == 'done':
-                self.picking_id.generate_carrier_files()
+            picking_ids = map(lambda p: p.id, self.mapped('picking_id'))
+            done_pickings = self.env['stock.picking'].search([
+                ('id', 'in', picking_ids),
+                ('state', '=', 'done')
+            ])
+            if done_pickings:
+                done_pickings.generate_carrier_files()
         return write_result
