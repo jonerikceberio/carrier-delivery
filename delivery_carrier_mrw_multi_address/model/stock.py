@@ -1,8 +1,9 @@
+# -*- encoding: utf-8 -*-
 ##############################################################################
 #
 #    OpenERP, Open Source Management Solution
-#    Copyright (C) 2015 FactorLibre (http://www.factorlibre.com)
-#                  Hugo Santos <hugo.santos@factorlibre.com>
+#    Copyright (C) 2015 Digital5 S.L.
+#                  Jon Erik Ceberio <jonerikceberio@digital5.es>
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU Affero General Public License as
@@ -18,28 +19,20 @@
 #    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 ##############################################################################
-{
-    'name': 'MRW Deliveries WebService',
-    'version': '0.2',
-    'author': "FactorLibre",
-    'category': 'Sales Management',
-    'depends': [
-        'delivery',
-        'base_delivery_carrier_label',
-        'delivery_carrier_basics',
-    ],
-    'website': 'http://factorlibre.com',
-    'data': [
-        'security/ir.model.access.csv',
-        'view/mrw_config_view.xml',
-        'view/delivery_view.xml',
-        'view/stock_view.xml'
-    ],
-    'demo': [],
-    'installable': True,
-    'auto_install': False,
-    'license': 'AGPL-3',
-    'external_dependencies': {
-        'python': ['suds'],
-    }
-}
+
+from openerp import models, api, exceptions, _
+
+
+class StockPicking(models.Model):
+    _inherit = 'stock.picking'
+
+    @api.multi
+    def _get_origin_address(self):
+        return self.origin_address_id
+
+    @api.multi
+    def _generate_mrw_label(self, package_ids=None):
+        self.ensure_one()
+        if not self.origin_address_id:
+            raise exceptions.Warning(_('Please define an origin address'))
+        return super(StockPicking, self)._generate_mrw_label(package_ids=package_ids)

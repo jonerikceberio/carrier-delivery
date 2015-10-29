@@ -39,6 +39,22 @@
                                 <field name="password" password="True"/>
                             </group>
                         </group>
+                        <group string="Options">
+                            <group>
+                                <field name="sat_delivery"/>
+                            </group>
+                            <group>
+                            </group>
+                        </group>
+                        <group string="Cash on Delivery">
+                            <group>
+                                <field name="cod_type"/>
+                                <field name="cod_payment_id" attrs="{'invisible':[('cod_type','=',False)]}"/>
+                            </group>
+                            <group>
+                                <field name="perc_commission" attrs="{'invisible':[('cod_type','=',False)]}"/>
+                            </group>
+                        </group>
                     </sheet>
                 </form>
             </field>

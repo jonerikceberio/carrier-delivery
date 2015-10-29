@@ -31,3 +31,10 @@ class MrwConfig(models.Model):
     department_code = fields.Char('Department Code')
     username = fields.Char('Username', required=True)
     password = fields.Char('Password', required=True)
+    sat_delivery = fields.Boolean(string='Delivery on Saturday')
+    cod_type = fields.Selection([
+                ('O','Commission on origin'),
+                ('D','Commission on destination'),
+            ], string='COD type', track_visibility='onchange')
+    cod_payment_id = fields.Many2one('payment.method', string='Payment for COD')
+    perc_commission = fields.Float(string='COD commission (%)')

@@ -59,65 +59,117 @@ class StockPicking(models.Model):
         (('1', 'Frecuencia 1'), ('2', 'Frecuencia 2')), string='Mrw Frequence')
 
     @api.multi
+    def _get_origin_address(self):
+        return self.picking_type_id.warehouse_id.partner_id
+
+    @api.multi
+    def _get_zip(self, address):
+        '''
+        Llevan un formato especial por país
+         - España: Poner los 5 dígitos. (Ej: 05200 para Ávila)
+         - Portugal: Poner sólo los 4 primeros dígitos de los 7.
+           (Ej: 1200 para Lisboa)
+         - Andorra: Deben ser 5 dígitos, por lo que se pondrá un 0 delante del
+           mismo (p. ej 00500 para Andorra la Vella)
+        '''
+        if address.country_id.code == 'ES':
+            return address.zip.zfill(5)
+        elif address.country_id.code == 'PT':
+            return address.zip[:4]
+        elif address.country_id.code == 'AD':
+            return address.zip.zfill(5)
+
+    @api.multi
     def _mrw_transm_envio_request(self, mrw_api):
         self.ensure_one()
         client = mrw_api.client
         transm_envio = client.factory.create('TransmEnvioRequest')
 
-        warehouse_address = self.picking_type_id.warehouse_id.partner_id
+        warehouse_address = self._get_origin_address()
+
+        #los codigos que son distintos del estandar iso en odoo se acumulan aqui
+        codigosPaisMrw = {'ES': 'ESP'}
+
+        #comprobacion de todos los campos al principio
+        must_fields = {'No Street in pickup address': warehouse_address.street,
+                       'No Zip in pickup address': warehouse_address.zip,
+                       'No City in pickup address': warehouse_address.city,
+                       'No VAT in pickup address': warehouse_address.vat,
+                       'No Name in pickup address': warehouse_address.name,
+                       'No Street in Shipping address': self.partner_id.street,
+                       'No Zip in Shipping address': self.partner_id.zip,
+                       'No City in Shipping address': self.partner_id.city,
+                       'No VAT in Shipping address': self.partner_id.vat,
+                       }
+        for key, value in must_fields.items():
+            if not value:
+                raise exceptions.Warning(_('%s' % key))
 
         pickup_address = transm_envio.DatosRecogida.Direccion
-        pickup_address.Via = warehouse_address.street
+        pickup_address.Via = warehouse_address.street  # Obligatorio
+        pickup_address.Numero = 0  # Obligatorio - Recomendable que sea el dato real. Si no se puede extraer el dato real se pondra 0 (cero)
         if warehouse_address.street2:
-            pickup_address.Resto = warehouse_address.street2
+            pickup_address.Resto = warehouse_address.street2  # Opcional - Se puede omitir
+        pickup_address.CodigoPostal = self._get_zip(warehouse_address)  # Obligatorio
+        pickup_address.Poblacion = warehouse_address.city  # Obligatorio
+        if warehouse_address.state_id and warehouse_address.country_id.code != "ES":
+            pickup_address.Provincia = warehouse_address.state_id.name  # Opcional - Se debe omitir para envios nacionales.
 
-        # TODO: Comprobar que hacer con el resto de codigos postales
-        # Llevan un formato especial por país
-        # - España: Poner los 5 dígitos. (Ej: 05200 para Ávila)
-        # - Portugal: Poner sólo los 4 primeros dígitos de los 7.
-        #   (Ej: 1200 para Lisboa)
-        # - Andorra: Deben ser 5 dígitos, por lo que se pondrá un 0 delante del
-        #   mismo (p. ej 00500 para Andorra la Vella)
-        pickup_address.CodigoPostal = warehouse_address.zip.zfill(5)
-        pickup_address.Poblacion = warehouse_address.city
-        pickup_address.Provincia = warehouse_address.state_id.name or ''
-        pickup_address.CodigoPais = warehouse_address.country_id.code or ''
+        if self.partner_id.country_id and codigosPaisMrw.get(warehouse_address.country_id.code):  # Opcional - Se puede omitir para envios nacionales.
+            pickup_address.CodigoPais = codigosPaisMrw.get(warehouse_address.country_id.code)
+        else:
+            pickup_address.CodigoPais = warehouse_address.country_id.code
 
-        transm_envio.DatosRecogida.Nif = warehouse_address.vat or ''
-        transm_envio.DatosRecogida.Nombre = warehouse_address.name
-        transm_envio.DatosRecogida.Telefono = warehouse_address.phone or ''
+        transm_envio.DatosRecogida.Nif = warehouse_address.vat  # Obligatorio
+        transm_envio.DatosRecogida.Nombre = warehouse_address.name  # Obligatorio
+        if warehouse_address.phone:
+            transm_envio.DatosRecogida.Telefono = warehouse_address.phone  # Opcional - Muy recomendable
 
         shipping_address = transm_envio.DatosEntrega.Direccion
         shipping_address.Via = self.partner_id.street
-        shipping_address.Resto = self.partner_id.street2 or ''
+        if self.partner_id.street2:
+            shipping_address.Resto = self.partner_id.street2
         shipping_address.CodigoPostal = self.partner_id.zip
         shipping_address.Poblacion = self.partner_id.city
-        shipping_address.Provincia = self.partner_id.state_id.name or ''
-        shipping_address.CodigoPais = self.partner_id.country_id.name or ''
+        if self.partner_id.state_id and self.partner_id.country_id.code != "ES":
+            shipping_address.Provincia = self.partner_id.state_id.name
 
-        transm_envio.DatosEntrega.Nif = self.partner_id.vat or ''
-        transm_envio.DatosEntrega.Nombre = self.partner_id.name or ''
-        transm_envio.DatosEntrega.Telefono = self.partner_id.phone or ''
+        if self.partner_id.country_id and codigosPaisMrw.get(self.partner_id.country_id.code):
+            shipping_address.CodigoPais = codigosPaisMrw.get(self.partner_id.country_id.code)
+        else:
+            shipping_address.CodigoPais = self.partner_id.country_id.code
+
+        transm_envio.DatosEntrega.Nif = self.partner_id.vat  # Obligatorio
+        transm_envio.DatosEntrega.Nombre = self.partner_id.name  # Obligatorio
+        if self.partner_id.phone:
+            transm_envio.DatosEntrega.Telefono = self.partner_id.phone  # Opcional - Muy recomendable
 
         # Datos Servicio
         service_data = transm_envio.DatosServicio
         service_data.Fecha = datetime.strftime(
-            fields.Datetime.from_string(self.date_done), '%d/%m/%Y')
+            fields.Datetime.from_string(self.min_date), '%d/%m/%Y')
         service_data.Referencia = self.name
         service_data.EnFranquicia = 'N'
         service_data.CodigoServicio = self.mrw_service_type
         service_data.NumeroBultos = self.number_of_packages or 1
-        service_data.Peso = self.weight or 1
+        service_data.Peso = format(self.weight or 1, ",.2f").replace(",", "X").replace(".", ",").replace("X", ".")
+        if self.carrier_id.mrw_config_id.sat_delivery:
+            service_data.EntregaSabado = 'S'
+        else:
+            service_data.EntregaSabado = 'N'
         if self.mrw_frequence:
             service_data.Frecuencia = self.mrw_frequence
+        if self.sale_id and self.sale_id.payment_method_id == self.carrier_id.mrw_config_id.cod_payment_id:
+            service_data.Reembolso = self.carrier_id.mrw_config_id.cod_type
+            if self.carrier_id.mrw_config_id.cod_type == "D":
+                service_data.ImporteReembolso = str(self.amount_total).replace(".", ",")
+            elif self.carrier_id.mrw_config_id.cod_type == "O":
+                cur = self.sale_id and self.sale_id.pricelist_id.currency_id or self.company_id.currency_id
+                service_data.ImporteReembolso = str(cur.round(self.amount_total * (1 + self.carrier_id.mrw_config_id.perc_commission / 100))).replace(".", ",")
 
-        # TODO: Servicio Rembolso
-        # Reembolso: indicador opcional de reembolso. Valores posibles:
-        # - N: (default) Sin reembolso.
-        # - O: Con reembolso comisión en origen.
-        # - D: Con reembolso comisión en destino.
-        # ImporteReembolso:
-        # - importe nominal del reembolso (para envíos con reembolso)
+        if self.amount_assured > 0.0:
+            service_data.SeguroOpcional.CodigoNaturaleza = "1"
+            service_data.SeguroOpcional.ValorAsegurado = str('%.2f' % self.amount_assured).replace(".", ",")
 
         if self.partner_id.email:
             notification_request = client.factory.create('NotificacionRequest')
