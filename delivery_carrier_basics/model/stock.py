@@ -30,28 +30,25 @@ class StockPicking(models.Model):
     @api.one
     @api.depends('move_lines.product_qty', 'move_lines')
     def _amount_all(self):
-        amount_untaxed = 0.0
-        amount_tax = 0.0
         amount_assured = 0.0
+        amount_cod = 0.0
         for move in self.move_lines:
             line = move.procurement_id and move.procurement_id.sale_line_id or False
             if line:
-                price = line._calc_line_base_price(line)
-                qty = move.product_qty
-                taxes = line.tax_id.compute_all(price, qty,
-                                        line.product_id,
-                                        line.order_id.partner_id)
-                cur = line.order_id.pricelist_id.currency_id
-                amount_untaxed += cur.round(taxes['total'])
-                for tax in taxes['taxes']:
-                    amount_tax += cur.round(tax.get('amount', 0.0))
+                qty = move.product_qty  # the qty of the move, not the one in the line
+                cod_amount = line.cod_amount
+                if not cod_amount:  # if not specified the cod amount, we take the total
+                    price = line._calc_line_base_price(line)
+                    taxes = line.tax_id.compute_all(price, qty,
+                                            line.product_id,
+                                            line.order_id.partner_id)
+                    cur = line.order_id.pricelist_id.currency_id
+                    for tax in taxes['taxes']:
+                        cod_amount += cur.round(tax.get('amount', 0.0))
                 amount_assured += cur.round(line.assured_amount * qty)
-        self.amount_untaxed = amount_untaxed
-        self.amount_tax = amount_tax
-        self.amount_total = amount_untaxed + amount_tax
+                amount_cod += cur.round(cod_amount * qty)
         self.amount_assured = amount_assured
+        self.amount_cod = amount_cod
 
-    amount_untaxed = fields.Float(string='Untaxed Amount', digits=dp.get_precision('Account'), readonly=True, compute='_amount_all')
-    amount_tax = fields.Float(string='Taxes', digits=dp.get_precision('Account'), readonly=True, compute='_amount_all')
-    amount_total = fields.Float(string='Total', digits=dp.get_precision('Account'), readonly=True, compute='_amount_all')
     amount_assured = fields.Float(string='Assured Total', digits=dp.get_precision('Account'), readonly=True, compute='_amount_all')
+    amount_cod = fields.Float(string='Cash on Delivery Total', digits=dp.get_precision('Account'), readonly=True, compute='_amount_all')

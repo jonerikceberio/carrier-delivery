@@ -11,6 +11,7 @@ class SaleOrderLine(models.Model):
 
     product_assured = fields.Boolean(string="Product Assured")
     assured_amount = fields.Float(string='Assured Amount', digits=dp.get_precision('Account'), help="The amount assured per product unit")
+    cod_amount = fields.Float(string='Cash on Delivery Amount', digits=dp.get_precision('Account'), copy=False)
 
     @api.onchange('product_assured')
     def _onchange_product_assured(self):

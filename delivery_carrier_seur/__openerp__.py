@@ -2,7 +2,7 @@
 #
 #    OpenERP, Open Source Management Solution
 #    Copyright (C) 2015 FactorLibre (http://www.factorlibre.com)
-#                  Hugo Santos <hugo.santos@factorlibre.com>
+#                  Ismael Calvo <ismael.calvo@factorlibre.com>
 #
 #    This program is free software: you can redistribute it and/or modify
 #    it under the terms of the GNU Affero General Public License as
@@ -19,8 +19,8 @@
 #
 ##############################################################################
 {
-    'name': 'MRW Deliveries WebService',
-    'version': '0.3',
+    'name': 'Seur Deliveries WebService',
+    'version': '0.1',
     'author': "FactorLibre",
     'category': 'Sales Management',
     'depends': [
@@ -31,7 +31,7 @@
     'website': 'http://factorlibre.com',
     'data': [
         'security/ir.model.access.csv',
-        'view/mrw_config_view.xml',
+        'view/seur_config_view.xml',
         'view/delivery_view.xml',
         'view/stock_view.xml'
     ],
@@ -40,6 +40,6 @@
     'auto_install': False,
     'license': 'AGPL-3',
     'external_dependencies': {
-        'python': ['suds'],
+        'python': ['seur'],
     }
 }

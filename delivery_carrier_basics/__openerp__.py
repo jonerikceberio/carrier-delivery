@@ -18,6 +18,7 @@ Methods useful for delivery carrier calculations
     "data": [
         "views/product_view.xml",
         "views/sale_order_view.xml",
+        "views/delivery_view.xml",
         ],
     "test": [],
     "js": [],

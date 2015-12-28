@@ -25,6 +25,8 @@ from openerp import models, fields, api, exceptions
 from openerp.tools.translate import _
 from ..webservice.mrw_api import MrwEnvio
 
+import logging
+_logger = logging.getLogger(__name__)
 
 class StockPicking(models.Model):
     _inherit = 'stock.picking'
@@ -63,6 +65,10 @@ class StockPicking(models.Model):
         return self.picking_type_id.warehouse_id.partner_id
 
     @api.multi
+    def _get_destination_address(self):
+        return self.partner_id
+
+    @api.multi
     def _get_zip(self, address):
         '''
         Llevan un formato especial por país
@@ -78,6 +84,8 @@ class StockPicking(models.Model):
             return address.zip[:4]
         elif address.country_id.code == 'AD':
             return address.zip.zfill(5)
+        else:
+            return address.zip
 
     @api.multi
     def _mrw_transm_envio_request(self, mrw_api):
@@ -86,6 +94,7 @@ class StockPicking(models.Model):
         transm_envio = client.factory.create('TransmEnvioRequest')
 
         warehouse_address = self._get_origin_address()
+        destination_address = self._get_destination_address()
 
         #los codigos que son distintos del estandar iso en odoo se acumulan aqui
         codigosPaisMrw = {'ES': 'ESP'}
@@ -96,10 +105,10 @@ class StockPicking(models.Model):
                        'No City in pickup address': warehouse_address.city,
                        'No VAT in pickup address': warehouse_address.vat,
                        'No Name in pickup address': warehouse_address.name,
-                       'No Street in Shipping address': self.partner_id.street,
-                       'No Zip in Shipping address': self.partner_id.zip,
-                       'No City in Shipping address': self.partner_id.city,
-                       'No VAT in Shipping address': self.partner_id.vat,
+                       'No Street in Shipping address': destination_address.street,
+                       'No Zip in Shipping address': destination_address.zip,
+                       'No City in Shipping address': destination_address.city,
+                       #'No VAT in Shipping address': self.partner_id.vat,
                        }
         for key, value in must_fields.items():
             if not value:
@@ -115,7 +124,7 @@ class StockPicking(models.Model):
         if warehouse_address.state_id and warehouse_address.country_id.code != "ES":
             pickup_address.Provincia = warehouse_address.state_id.name  # Opcional - Se debe omitir para envios nacionales.
 
-        if self.partner_id.country_id and codigosPaisMrw.get(warehouse_address.country_id.code):  # Opcional - Se puede omitir para envios nacionales.
+        if warehouse_address.country_id and codigosPaisMrw.get(warehouse_address.country_id.code):  # Opcional - Se puede omitir para envios nacionales.
             pickup_address.CodigoPais = codigosPaisMrw.get(warehouse_address.country_id.code)
         else:
             pickup_address.CodigoPais = warehouse_address.country_id.code
@@ -126,23 +135,23 @@ class StockPicking(models.Model):
             transm_envio.DatosRecogida.Telefono = warehouse_address.phone  # Opcional - Muy recomendable
 
         shipping_address = transm_envio.DatosEntrega.Direccion
-        shipping_address.Via = self.partner_id.street
-        if self.partner_id.street2:
-            shipping_address.Resto = self.partner_id.street2
-        shipping_address.CodigoPostal = self.partner_id.zip
-        shipping_address.Poblacion = self.partner_id.city
-        if self.partner_id.state_id and self.partner_id.country_id.code != "ES":
-            shipping_address.Provincia = self.partner_id.state_id.name
+        shipping_address.Via = destination_address.street
+        if destination_address.street2:
+            shipping_address.Resto = destination_address.street2
+        shipping_address.CodigoPostal = destination_address.zip
+        shipping_address.Poblacion = destination_address.city
+        if destination_address.state_id and destination_address.country_id.code != "ES":
+            shipping_address.Provincia = destination_address.state_id.name
 
-        if self.partner_id.country_id and codigosPaisMrw.get(self.partner_id.country_id.code):
-            shipping_address.CodigoPais = codigosPaisMrw.get(self.partner_id.country_id.code)
+        if destination_address.country_id and codigosPaisMrw.get(destination_address.country_id.code):
+            shipping_address.CodigoPais = codigosPaisMrw.get(destination_address.country_id.code)
         else:
-            shipping_address.CodigoPais = self.partner_id.country_id.code
+            shipping_address.CodigoPais = destination_address.country_id.code
 
-        transm_envio.DatosEntrega.Nif = self.partner_id.vat  # Obligatorio
-        transm_envio.DatosEntrega.Nombre = self.partner_id.name  # Obligatorio
-        if self.partner_id.phone:
-            transm_envio.DatosEntrega.Telefono = self.partner_id.phone  # Opcional - Muy recomendable
+        transm_envio.DatosEntrega.Nif = destination_address.vat or ''  # Obligatorio
+        transm_envio.DatosEntrega.Nombre = destination_address.name  # Obligatorio
+        if destination_address.phone:
+            transm_envio.DatosEntrega.Telefono = destination_address.phone  # Opcional - Muy recomendable
 
         # Datos Servicio
         service_data = transm_envio.DatosServicio
@@ -162,23 +171,23 @@ class StockPicking(models.Model):
         if self.sale_id and self.sale_id.payment_method_id == self.carrier_id.mrw_config_id.cod_payment_id:
             service_data.Reembolso = self.carrier_id.mrw_config_id.cod_type
             if self.carrier_id.mrw_config_id.cod_type == "D":
-                service_data.ImporteReembolso = str(self.amount_total).replace(".", ",")
+                service_data.ImporteReembolso = str(self.amount_cod).replace(".", ",")
             elif self.carrier_id.mrw_config_id.cod_type == "O":
                 cur = self.sale_id and self.sale_id.pricelist_id.currency_id or self.company_id.currency_id
-                service_data.ImporteReembolso = str(cur.round(self.amount_total * (1 + self.carrier_id.mrw_config_id.perc_commission / 100))).replace(".", ",")
+                service_data.ImporteReembolso = str(cur.round(self.amount_cod * (1 + self.carrier_id.mrw_config_id.perc_commission / 100))).replace(".", ",")
 
         if self.amount_assured > 0.0:
             service_data.SeguroOpcional.CodigoNaturaleza = "1"
             service_data.SeguroOpcional.ValorAsegurado = str('%.2f' % self.amount_assured).replace(".", ",")
 
-        if self.partner_id.email:
+        if destination_address.email:
             notification_request = client.factory.create('NotificacionRequest')
             notification_request.CanalNotificacion = "1"
             notification_request.TipoNotificacion = "4"
-            notification_request.MailSMS = self.partner_id.email
+            notification_request.MailSMS = destination_address.email
             service_data.Notificaciones.NotificacionRequest.append(
                 notification_request)
-
+        _logger.info(transm_envio)
         return transm_envio
 
     @api.multi
@@ -222,7 +231,7 @@ class StockPicking(models.Model):
             'file_type': 'pdf',
             'name': response.NumeroEnvio + '.pdf',
         }
-
+        self.carrier_tracking_ref = response.NumeroEnvio
         return [label]
 
     @api.multi

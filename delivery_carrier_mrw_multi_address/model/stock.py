@@ -31,6 +31,23 @@ class StockPicking(models.Model):
         return self.origin_address_id
 
     @api.multi
+    def _get_destination_address(self):
+        return self.delivery_address_id
+
+    @api.multi
+    def _mrw_transm_envio_request(self, mrw_api):
+        self.ensure_one()
+        transm_envio = super(StockPicking, self)._mrw_transm_envio_request(mrw_api)
+        if self.consignee_id:
+            if self.consignee_id.email:
+                transm_envio.DatosServicio.Notificaciones.NotificacionRequest[0].MailSMS = self.consignee_id.email
+            transm_envio.DatosEntrega.Nif = self.consignee_id.vat or ''
+            transm_envio.DatosEntrega.Nombre = self.consignee_id.name  # Obligatorio
+            if self.consignee_id.phone:
+                transm_envio.DatosEntrega.Telefono = self.consignee_id.phone  # Opcional - Muy recomendable
+        return transm_envio
+
+    @api.multi
     def _generate_mrw_label(self, package_ids=None):
         self.ensure_one()
         if not self.origin_address_id:
